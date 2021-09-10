@@ -9,7 +9,7 @@ import (
 )
 
 func TestHeapPopOrder(t *testing.T) {
-	h := &CacheItemHeap{}
+	h := &Heap{}
 	heap.Init(h)
 
 	oldest := &CacheItem{

@@ -50,7 +50,7 @@ func TestCache_Write(t *testing.T) {
 		expectedSizeInBytes int
 		expectedIndexSize   int
 		expectedIndex       map[string]*CacheItem
-		expectedHeap        *CacheItemHeap
+		expectedHeap        *Heap
 		expectedWriteCount  int
 	}{
 		{
@@ -63,7 +63,7 @@ func TestCache_Write(t *testing.T) {
 			expectedIndex: map[string]*CacheItem{
 				"key.1": newCacheItem("key.1", toFilePath("/tmp", "key.1", aTime), 3, aTime),
 			},
-			expectedHeap: &CacheItemHeap{
+			expectedHeap: &Heap{
 				newCacheItem("key.1", toFilePath("/tmp", "key.1", aTime), 3, aTime),
 			},
 			expectedWriteCount: 1,
@@ -80,7 +80,7 @@ func TestCache_Write(t *testing.T) {
 				"key.1": newCacheItem("key.1", toFilePath("/tmp", "key.1", aTime), 3, aTime),
 				"key.2": newCacheItem("key.2", toFilePath("/tmp", "key.2", aTime), 3, aTime),
 			},
-			expectedHeap: &CacheItemHeap{
+			expectedHeap: &Heap{
 				newCacheItem("key.1", toFilePath("/tmp", "key.1", aTime), 3, aTime),
 				newCacheItem("key.2", toFilePath("/tmp", "key.2", aTime), 3, aTime),
 			},
@@ -107,10 +107,10 @@ func TestCache_Write(t *testing.T) {
 
 			assert.Equal(t, c.expectedSizeInBytes, cache.sizeInBytes)
 			require.Equal(t, c.expectedIndexSize, len(cache.index))
-			require.Equal(t, c.expectedIndexSize, cache.itemHeap.Len())
+			require.Equal(t, c.expectedIndexSize, cache.accessHeap.Len())
 
 			require.Equal(t, c.expectedIndex, cache.index)
-			require.Equal(t, c.expectedHeap, cache.itemHeap)
+			require.Equal(t, c.expectedHeap, cache.accessHeap)
 		})
 	}
 }
@@ -122,20 +122,20 @@ func TestCache_Purge(t *testing.T) {
 		name                string
 		maxSize             int
 		index               map[string]*CacheItem
-		heap                *CacheItemHeap
+		heap                *Heap
 		sizeInBytes         int
 		requestedSpace      int
 		expectedSizeInBytes int
 		expectedIndexSize   int
 		expectedIndex       map[string]*CacheItem
-		expectedHeap        *CacheItemHeap
+		expectedHeap        *Heap
 	}{
 		{
 			name: "sunny path",
 			index: map[string]*CacheItem{
 				"key.1": newCacheItem("key.1", toFilePath("/tmp", "key.1", aTime), 3, aTime),
 			},
-			heap: &CacheItemHeap{
+			heap: &Heap{
 				newCacheItem("key.1", toFilePath("/tmp", "key.1", aTime), 3, aTime),
 			},
 			maxSize:             3,
@@ -144,7 +144,7 @@ func TestCache_Purge(t *testing.T) {
 			expectedSizeInBytes: 0,
 			expectedIndexSize:   0,
 			expectedIndex:       map[string]*CacheItem{},
-			expectedHeap:        &CacheItemHeap{},
+			expectedHeap:        &Heap{},
 		},
 		{
 			name: "keep 1 item",
@@ -152,7 +152,7 @@ func TestCache_Purge(t *testing.T) {
 				"key.1": newCacheItem("key.1", toFilePath("/tmp", "key.1", aTime), 3, aTime),
 				"key.2": newCacheItem("key.2", toFilePath("/tmp", "key.2", aTime.Add(time.Second)), 3, aTime.Add(time.Second)),
 			},
-			heap: &CacheItemHeap{
+			heap: &Heap{
 				newCacheItem("key.1", toFilePath("/tmp", "key.1", aTime), 3, aTime),
 				newCacheItem("key.2", toFilePath("/tmp", "key.2", aTime.Add(time.Second)), 3, aTime.Add(time.Second)),
 			},
@@ -164,7 +164,7 @@ func TestCache_Purge(t *testing.T) {
 			expectedIndex: map[string]*CacheItem{
 				"key.2": newCacheItem("key.2", toFilePath("/tmp", "key.2", aTime.Add(time.Second)), 3, aTime.Add(time.Second)),
 			},
-			expectedHeap: &CacheItemHeap{
+			expectedHeap: &Heap{
 				newCacheItem("key.2", toFilePath("/tmp", "key.2", aTime.Add(time.Second)), 3, aTime.Add(time.Second)),
 			},
 		},
@@ -175,17 +175,17 @@ func TestCache_Purge(t *testing.T) {
 			cache := NewCache("/tmp", c.maxSize, newTestCacheIO())
 
 			cache.index = c.index
-			cache.itemHeap = c.heap
+			cache.accessHeap = c.heap
 			cache.sizeInBytes = c.sizeInBytes
 
 			cache.purgeWithLock(1)
 
 			assert.Equal(t, c.expectedSizeInBytes, cache.sizeInBytes)
 			require.Equal(t, c.expectedIndexSize, len(cache.index))
-			require.Equal(t, c.expectedIndexSize, cache.itemHeap.Len())
+			require.Equal(t, c.expectedIndexSize, cache.accessHeap.Len())
 
 			require.Equal(t, c.expectedIndex, cache.index)
-			require.Equal(t, c.expectedHeap, cache.itemHeap)
+			require.Equal(t, c.expectedHeap, cache.accessHeap)
 		})
 	}
 

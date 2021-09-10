@@ -16,8 +16,9 @@ const DateFormat = "20060102T1504059999"
 type Cache struct {
 	basePath string
 
-	index    map[string]*CacheItem
-	itemHeap *CacheItemHeap
+	index           map[string]*CacheItem
+	recentEntryHeap *Heap
+	ageHeap         *Heap
 
 	maxSizeInBytes int
 	sizeInBytes    int
@@ -28,11 +29,15 @@ type Cache struct {
 
 func NewCache(basePath string, maxSizeInBytes int, cacheIO CacheIO) *Cache {
 	c := &Cache{
-		basePath:       basePath,
-		maxSizeInBytes: maxSizeInBytes,
-		itemHeap:       &CacheItemHeap{},
-		cacheIO:        cacheIO,
+		basePath:        basePath,
+		maxSizeInBytes:  maxSizeInBytes,
+		recentEntryHeap: NewHeap(ByInsertionTime),
+		ageHeap:         NewHeap(ByAge),
+		cacheIO:         cacheIO,
 	}
+
+	heap.Init(c.ageHeap)
+	heap.Init(c.recentEntryHeap)
 
 	c.initialize()
 
@@ -41,7 +46,7 @@ func NewCache(basePath string, maxSizeInBytes int, cacheIO CacheIO) *Cache {
 
 func (c *Cache) initialize() {
 	c.index = map[string]*CacheItem{}
-	heap.Init(c.itemHeap)
+
 	//todo: walk base folder and reload index
 }
 
@@ -70,7 +75,7 @@ func (c *Cache) Write(key string, t time.Time, data []byte) error {
 	}
 
 	c.index[key] = item
-	heap.Push(c.itemHeap, item)
+	heap.Push(c.recentEntryHeap, item)
 
 	return nil
 }
@@ -90,7 +95,8 @@ func (c *Cache) purgeWithLock(neededSpace int) { //this func should always be ca
 }
 
 func (c *Cache) evictWithLock() {
-	removed := heap.Pop(c.itemHeap)
+	//todo: determine whether to add this removed item into the byAge heap
+	removed := heap.Pop(c.recentEntryHeap)
 	if removed == nil {
 		return
 	}
@@ -120,18 +126,20 @@ func (c *Cache) Read(key string) (data []byte, err error) {
 }
 
 type CacheItem struct {
-	key      string
-	size     int
-	time     time.Time
-	filePath string
+	key        string
+	size       int
+	createdAt  time.Time
+	insertedAt time.Time
+	filePath   string
 }
 
-func newCacheItem(key string, filePath string, size int, time time.Time) *CacheItem {
+func newCacheItem(key string, filePath string, size int, createdAt time.Time) *CacheItem {
 	return &CacheItem{
-		key:      key,
-		filePath: filePath,
-		size:     size,
-		time:     time,
+		key:        key,
+		filePath:   filePath,
+		size:       size,
+		createdAt:  createdAt,
+		insertedAt: time.Now(),
 	}
 }
 
