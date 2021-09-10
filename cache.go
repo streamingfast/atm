@@ -16,10 +16,8 @@ const DateFormat = "20060102T1504059999"
 type Cache struct {
 	basePath string
 
-	index      map[string]*CacheItem
-	itemHeap   *CacheItemHeap
-	writeFunc  func(filePath string, data []byte) error
-	readerFunc func(filePath string) ([]byte, error)
+	index    map[string]*CacheItem
+	itemHeap *CacheItemHeap
 
 	maxSizeInBytes int
 	sizeInBytes    int
@@ -64,8 +62,9 @@ func (c *Cache) Write(key string, t time.Time, data []byte) error {
 
 	c.sizeInBytes += len(data)
 	filePath := c.toFilePath(key, t)
-	item := newCacheItem(key, filePath, t)
-	err := c.writeFunc(filePath, data)
+	item := newCacheItem(key, filePath, len(data), t)
+
+	err := c.cacheIO.Write(filePath, data)
 	if err != nil {
 		return fmt.Errorf("writing file: %s: %w", filePath, err)
 	}
@@ -136,8 +135,7 @@ func newCacheItem(key string, filePath string, size int, time time.Time) *CacheI
 	}
 }
 
-func cacheItemFromFileName(filePath string) (key string, item *CacheItem) {
-	//path := f.Name()
+func cacheItemFromFileName(filePath string, size int) (key string, item *CacheItem) {
 	name := filepath.Base(filePath)
 
 	parts := strings.Split(name, "-")
@@ -150,7 +148,7 @@ func cacheItemFromFileName(filePath string) (key string, item *CacheItem) {
 		panic(err)
 	}
 
-	item = newCacheItem(key, filePath, t)
+	item = newCacheItem(key, filePath, size, t)
 
 	return
 }

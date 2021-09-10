@@ -193,7 +193,8 @@ func TestCache_Purge(t *testing.T) {
 
 func TestCache_cacheItemFromFileName(t *testing.T) {
 	filePath := fmt.Sprintf("/tmp/cache/key.1-%s", DateFormat)
-	k, ci := cacheItemFromFileName(filePath)
+	size := 1
+	k, ci := cacheItemFromFileName(filePath, size)
 
 	expectedTime, err := time.Parse(DateFormat, DateFormat)
 	require.NoError(t, err)
