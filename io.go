@@ -12,16 +12,20 @@ type CacheIO interface {
 	Delete(path string) error
 }
 
-type fileIO struct{}
+type FileIO struct{}
 
-func (f *fileIO) Write(path string, data []byte) error {
+func NewFileIO() *FileIO {
+	return &FileIO{}
+}
+
+func (f *FileIO) Write(path string, data []byte) error {
 	return ioutil.WriteFile(path, data, fs.ModePerm)
 }
 
-func (f *fileIO) Read(path string) ([]byte, error) {
+func (f *FileIO) Read(path string) ([]byte, error) {
 	return ioutil.ReadFile(path)
 }
 
-func (f *fileIO) Delete(path string) error {
+func (f *FileIO) Delete(path string) error {
 	return os.Remove(path)
 }
