@@ -13,6 +13,10 @@ func (h CacheItemHeap) Less(i, j int) bool {
 }
 
 func (h CacheItemHeap) Swap(i, j int) {
+	if len(h) == 0 {
+		return
+	}
+
 	h[i], h[j] = h[j], h[i]
 }
 
@@ -22,6 +26,10 @@ func (h *CacheItemHeap) Push(x interface{}) {
 
 func (h *CacheItemHeap) Pop() interface{} {
 	old := *h
+	if len(old) == 0 {
+		return nil
+	}
+
 	n := len(old)
 	x := old[n-1]
 	*h = old[0 : n-1]
