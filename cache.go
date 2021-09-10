@@ -2,6 +2,7 @@ package atm
 
 import (
 	"container/heap"
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -23,16 +24,16 @@ type Cache struct {
 	maxSizeInBytes int
 	sizeInBytes    int
 
-	mu sync.RWMutex
+	mu      sync.RWMutex
+	cacheIO CacheIO
 }
 
-func NewCache(basePath string, maxSizeInBytes int) *Cache {
+func NewCache(basePath string, maxSizeInBytes int, cacheIO CacheIO) *Cache {
 	c := &Cache{
 		basePath:       basePath,
 		maxSizeInBytes: maxSizeInBytes,
-		writeFunc:      write,
-		readerFunc:     read,
 		itemHeap:       &CacheItemHeap{},
+		cacheIO:        cacheIO,
 	}
 
 	c.initialize()
@@ -59,8 +60,8 @@ func (c *Cache) Write(key string, t time.Time, data []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	//todo: check if new data fix cache remaining space.
-	//		if not purge until it fit.
+	c.purgeWithLock(len(data))
+
 	c.sizeInBytes += len(data)
 	filePath := c.toFilePath(key, t)
 	item := newCacheItem(key, filePath, t)
@@ -68,57 +69,69 @@ func (c *Cache) Write(key string, t time.Time, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("writing file: %s: %w", filePath, err)
 	}
+
 	c.index[key] = item
 	heap.Push(c.itemHeap, item)
 
 	return nil
 }
 
-func (c *Cache) purgeWithLock(neededSpace int) error { //this func should always be call within a cache lock
-	//todo: evict items until cache has enough free space
-	return nil
+func (c *Cache) purgeWithLock(neededSpace int) { //this func should always be call within a cache lock
+	freeSpace := c.maxSizeInBytes - c.sizeInBytes
+	if freeSpace >= neededSpace {
+		return
+	}
+
+	for freeSpace < neededSpace {
+		c.evictWithLock()
+		freeSpace = c.maxSizeInBytes - c.sizeInBytes
+	}
+
+	return
 }
 
-func (c *Cache) Evict(key string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.evictWithLock(key)
+func (c *Cache) evictWithLock() {
+	removed := heap.Pop(c.itemHeap)
+	if removed == nil {
+		return
+	}
+
+	removedItem := removed.(*CacheItem)
+	c.sizeInBytes -= removedItem.size
+
+	delete(c.index, removedItem.key)
+
+	go func() {
+		_ = c.cacheIO.Delete(removedItem.filePath)
+		//todo: log err as warning here
+	}()
 }
 
-func (c *Cache) evictWithLock(key string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	//todo: remove from maps
-	//todo: remove from sortedItems
-	//todo: trigger file delete
-	//todo: calculate new cache size in bytes
-}
+var NotFoundError = errors.New("not found")
 
 func (c *Cache) Read(key string) (data []byte, err error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return
-}
+	if ci, found := c.index[key]; found {
+		return c.cacheIO.Read(ci.filePath)
+	}
 
-func write(filePath string, data []byte) error {
-	return nil
-}
-
-func read(filePath string) ([]byte, error) {
-	return nil, nil
+	return nil, NotFoundError
 }
 
 type CacheItem struct {
 	key      string
+	size     int
 	time     time.Time
 	filePath string
 }
 
-func newCacheItem(key string, filePath string, time time.Time) *CacheItem {
+func newCacheItem(key string, filePath string, size int, time time.Time) *CacheItem {
 	return &CacheItem{
 		key:      key,
 		filePath: filePath,
+		size:     size,
 		time:     time,
 	}
 }
