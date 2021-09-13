@@ -9,22 +9,24 @@ import (
 )
 
 func TestHeapPopOrder(t *testing.T) {
-	h := &Heap{}
+	h := &Heap{
+		less: ByAge,
+	}
 	heap.Init(h)
 
 	oldest := &CacheItem{
 		key:      "oldest",
-		time:     time.Now().Add(-1 * 60 * time.Second),
+		itemDate: time.Now().Add(-1 * 60 * time.Second),
 		filePath: "/foo/1",
 	}
 	newest := &CacheItem{
 		key:      "newest",
-		time:     time.Now().Add(60 * time.Second),
+		itemDate: time.Now().Add(60 * time.Second),
 		filePath: "/foo/3",
 	}
 	middle := &CacheItem{
 		key:      "middle",
-		time:     time.Now(),
+		itemDate: time.Now(),
 		filePath: "/foo/2",
 	}
 

@@ -20,19 +20,16 @@ type Cache struct {
 	recentEntryHeap *Heap
 	ageHeap         *Heap
 
-	maxSizeInBytes int
-	sizeInBytes    int
-
 	mu      sync.RWMutex
 	cacheIO CacheIO
 }
 
-func NewCache(basePath string, maxSizeInBytes int, cacheIO CacheIO) *Cache {
+func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cacheIO CacheIO) *Cache {
 	c := &Cache{
-		basePath:        basePath,
-		maxSizeInBytes:  maxSizeInBytes,
-		recentEntryHeap: NewHeap(ByInsertionTime),
-		ageHeap:         NewHeap(ByAge),
+		basePath: basePath,
+
+		recentEntryHeap: NewHeap(ByInsertionTime, maxRecentEntryBytes),
+		ageHeap:         NewHeap(ByAge, maxEntryByAgeBytes),
 		cacheIO:         cacheIO,
 	}
 
@@ -59,57 +56,75 @@ func toFilePath(basePath, key string, t time.Time) string {
 	return path.Join(basePath, name)
 }
 
-func (c *Cache) Write(key string, t time.Time, data []byte) error {
+func (c *Cache) Write(key string, itemDate time.Time, data []byte) (*CacheItem, error) {
+	return c.write(key, itemDate, time.Now(), data)
+}
+
+func (c *Cache) write(key string, itemDate, insertionTime time.Time, data []byte) (*CacheItem, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.purgeWithLock(len(data))
+	evictedCacheItems := c.purgeWithLock(c.recentEntryHeap, len(data))
 
-	c.sizeInBytes += len(data)
-	filePath := c.toFilePath(key, t)
-	item := newCacheItem(key, filePath, len(data), t)
+	for _, evicted := range evictedCacheItems {
+		if c.ageHeap.FreeSpace() >= evicted.size { //we need space
+			c.ageHeap.Push(evicted)
+			continue
+		}
+
+		peek := c.ageHeap.Peek()
+		if peek.itemDate.Before(evicted.itemDate) { //evicted item is older then last age item so we remove it
+			ageEvictedItems := c.purgeWithLock(c.ageHeap, len(data))
+			for _, ageEvicted := range ageEvictedItems {
+				delete(c.index, ageEvicted.key)
+				go func() {
+					_ = c.cacheIO.Delete(evicted.filePath)
+					//todo: log err as warning here
+				}()
+			}
+			c.ageHeap.Push(evicted)
+		} else {
+			delete(c.index, evicted.key)
+		}
+	}
+
+	filePath := c.toFilePath(key, itemDate)
+	item := newCacheItem(key, filePath, len(data), itemDate, insertionTime)
 
 	err := c.cacheIO.Write(filePath, data)
 	if err != nil {
-		return fmt.Errorf("writing file: %s: %w", filePath, err)
+		return nil, fmt.Errorf("writing file: %s: %w", filePath, err)
 	}
 
 	c.index[key] = item
 	heap.Push(c.recentEntryHeap, item)
 
-	return nil
+	return item, err
 }
 
-func (c *Cache) purgeWithLock(neededSpace int) { //this func should always be call within a cache lock
-	freeSpace := c.maxSizeInBytes - c.sizeInBytes
-	if freeSpace >= neededSpace {
+func (c *Cache) purgeWithLock(h *Heap, neededSpace int) (evictedCacheItems []*CacheItem) { //this func should always be call within a cache lock
+	freeSpace := h.FreeSpace()
+	if h.FreeSpace() >= neededSpace {
 		return
 	}
 
 	for freeSpace < neededSpace {
-		c.evictWithLock()
-		freeSpace = c.maxSizeInBytes - c.sizeInBytes
+		evicted := c.evictWithLock(h)
+		evictedCacheItems = append(evictedCacheItems, evicted)
+		freeSpace = h.FreeSpace()
 	}
 
 	return
 }
 
-func (c *Cache) evictWithLock() {
-	//todo: determine whether to add this removed item into the byAge heap
-	removed := heap.Pop(c.recentEntryHeap)
+func (c *Cache) evictWithLock(h *Heap) *CacheItem {
+	removed := heap.Pop(h)
 	if removed == nil {
-		return
+		return nil
 	}
 
-	removedItem := removed.(*CacheItem)
-	c.sizeInBytes -= removedItem.size
+	return removed.(*CacheItem)
 
-	delete(c.index, removedItem.key)
-
-	go func() {
-		_ = c.cacheIO.Delete(removedItem.filePath)
-		//todo: log err as warning here
-	}()
 }
 
 var NotFoundError = errors.New("not found")
@@ -128,18 +143,18 @@ func (c *Cache) Read(key string) (data []byte, err error) {
 type CacheItem struct {
 	key        string
 	size       int
-	createdAt  time.Time
+	itemDate   time.Time
 	insertedAt time.Time
 	filePath   string
 }
 
-func newCacheItem(key string, filePath string, size int, createdAt time.Time) *CacheItem {
+func newCacheItem(key string, filePath string, size int, itemDate, insertedAt time.Time) *CacheItem {
 	return &CacheItem{
 		key:        key,
 		filePath:   filePath,
 		size:       size,
-		createdAt:  createdAt,
-		insertedAt: time.Now(),
+		itemDate:   itemDate,
+		insertedAt: insertedAt,
 	}
 }
 
@@ -156,7 +171,8 @@ func cacheItemFromFileName(filePath string, size int) (key string, item *CacheIt
 		panic(err)
 	}
 
-	item = newCacheItem(key, filePath, size, t)
+	//todo: check file time
+	item = newCacheItem(key, filePath, size, t, time.Now())
 
 	return
 }

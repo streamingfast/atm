@@ -3,7 +3,7 @@ package atm
 import "container/heap"
 
 func ByAge(h []*CacheItem, i, j int) bool {
-	return h[i].createdAt.Before(h[j].createdAt)
+	return h[i].itemDate.Before(h[j].itemDate)
 }
 
 func ByInsertionTime(h []*CacheItem, i, j int) bool {
@@ -11,70 +11,80 @@ func ByInsertionTime(h []*CacheItem, i, j int) bool {
 }
 
 type Heap struct {
-	heap []*CacheItem
-	less func(h []*CacheItem, i, j int) bool
+	items          []*CacheItem
+	sizeInBytes    int
+	maxSizeInBytes int
+	less           func(h []*CacheItem, i, j int) bool
 }
 
-func NewHeap(less func(h []*CacheItem, i, j int) bool) *Heap {
+func NewHeap(less func(h []*CacheItem, i, j int) bool, maxSizeInByte int) *Heap {
 	h := &Heap{
-		heap: []*CacheItem{},
-		less: less,
+		items:          []*CacheItem{},
+		less:           less,
+		maxSizeInBytes: maxSizeInByte,
 	}
 
 	return h
 }
 
 func (h Heap) Len() int {
-	return len(h.heap)
+	return len(h.items)
 }
 
 func (h Heap) Less(i, j int) bool {
-	return h.less(h.heap, i, j)
+	return h.less(h.items, i, j)
 }
 
 func (h Heap) Swap(i, j int) {
-	if len(h.heap) == 0 {
+	if len(h.items) == 0 {
 		return
 	}
 
-	h.heap[i], h.heap[j] = h.heap[j], h.heap[i]
+	h.items[i], h.items[j] = h.items[j], h.items[i]
+}
+
+func (h *Heap) FreeSpace() int {
+	return h.maxSizeInBytes - h.sizeInBytes
 }
 
 func (h *Heap) Push(x interface{}) {
-	h.heap = append(h.heap, x.(*CacheItem))
+	cacheItem := x.(*CacheItem)
+	h.sizeInBytes += cacheItem.size
+	h.items = append(h.items, cacheItem)
 }
 
 func (h *Heap) Pop() interface{} {
-	old := h.heap
+	old := h.items
 	if len(old) == 0 {
 		return nil
 	}
 
 	n := len(old)
-	x := old[n-1]
-	h.heap = old[0 : n-1]
-	return x
+	ci := old[n-1]
+	h.items = old[0 : n-1]
+	h.sizeInBytes -= ci.size
+	return ci
 }
 
 func (h *Heap) Get(i int) *CacheItem {
-	x := h.heap[i]
+	x := h.items[i]
 	return x
 }
 
 func (h *Heap) Peek() *CacheItem {
-	if len(h.heap) == 0 {
+	if len(h.items) == 0 {
 		return nil
 	}
-	return h.heap[len(h.heap)-1]
+	return h.items[len(h.items)-1]
 }
 
 func (h *Heap) Remove(key string) *CacheItem {
-	var i int
+	var foundAtIndex int
 	var found bool
-	for ix, item := range h.heap {
-		if item.key == key {
+	for index, cacheIem := range h.items {
+		if cacheIem.key == key {
 			found = true
-			i = ix
+			foundAtIndex = index
 		}
 	}
 
@@ -82,5 +92,7 @@ func (h *Heap) Remove(key string) *CacheItem {
 		return nil
 	}
 
-	return heap.Remove(h, i).(*CacheItem)
+	cacheItem := heap.Remove(h, foundAtIndex).(*CacheItem)
+	h.sizeInBytes -= cacheItem.size
+	return cacheItem
 }
