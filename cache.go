@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"go.uber.org/zap"
 )
 
@@ -38,6 +39,22 @@ func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cach
 
 	heap.Init(c.ageHeap)
 	heap.Init(c.recentEntryHeap)
+
+	go func() {
+		start := time.Now()
+		for {
+			if time.Since(start) > 10*time.Second {
+				zlog.Info("cache stats",
+					zap.String("indexes entries", humanize.Bytes(uint64(len(c.index)))),
+					zap.String("recent entries", humanize.Bytes(uint64(c.recentEntryHeap.Len()))),
+					zap.String("age entries", humanize.Bytes(uint64(c.ageHeap.Len()))),
+					zap.String("recent heap size", humanize.Bytes(uint64(c.recentEntryHeap.sizeInBytes))),
+					zap.String("age heap size", humanize.Bytes(uint64(c.recentEntryHeap.sizeInBytes))),
+				)
+				start = time.Now()
+			}
+		}
+	}()
 
 	return c
 }
@@ -128,7 +145,7 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 
 func (c *Cache) purgeWithLock(h *Heap, neededSpace int) (evictedCacheItems []*CacheItem) { //this func should always be call within a cache lock
 	freeSpace := h.FreeSpace()
-	if h.FreeSpace() >= neededSpace {
+	if freeSpace >= neededSpace {
 		return
 	}
 
