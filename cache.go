@@ -125,12 +125,20 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 			for _, ageEvicted := range ageEvictedItems {
 				delete(c.index, ageEvicted.key)
 				go func() {
-					_ = c.cacheIO.Delete(evicted.filePath)
-					//todo: log err as warning here
+					err := c.cacheIO.Delete(evicted.filePath)
+					if err != nil {
+						zlog.Warn("failed to delete file", zap.String("file", evicted.filePath), zap.Error(err))
+					}
 				}()
 			}
 			c.ageHeap.Push(evicted)
 		} else {
+			go func() {
+				err := c.cacheIO.Delete(evicted.filePath)
+				if err != nil {
+					zlog.Warn("to old to age heap : failed to delete file", zap.String("file", evicted.filePath), zap.Error(err))
+				}
+			}()
 			delete(c.index, evicted.key)
 		}
 	}
