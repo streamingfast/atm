@@ -4,11 +4,14 @@ import (
 	"container/heap"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 const DateFormat = "20060102T1504059999"
@@ -36,15 +39,35 @@ func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cach
 	heap.Init(c.ageHeap)
 	heap.Init(c.recentEntryHeap)
 
-	c.initialize()
-
 	return c
 }
 
-func (c *Cache) initialize() {
+func NewInitializedCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cacheIO CacheIO) (*Cache, error) {
+	c := NewCache(basePath, maxEntryByAgeBytes, maxEntryByAgeBytes, cacheIO)
+
+	return c.initialize()
+}
+
+func (c *Cache) initialize() (*Cache, error) {
+	zlog.Info("initializing cache", zap.String("base_cache_path", c.basePath))
 	c.index = map[string]*CacheItem{}
 
-	//todo: walk base folder and reload index
+	files, err := ioutil.ReadDir(c.basePath)
+	if err != nil {
+		return c, fmt.Errorf("listing file of folder: %s : %w", c.basePath, err)
+	}
+
+	zlog.Info("load files to caches", zap.Int("file_count", len(files)))
+	for _, f := range files {
+		fmt.Println(f.Name())
+		_, cacheItem := cacheItemFromFile(path.Join(c.basePath, f.Name()), f)
+		_, err := c.write(cacheItem, []byte{}, true)
+		if err != nil {
+			return c, fmt.Errorf("writing cache item: %w", err)
+		}
+		zlog.Debug("file loaded to cache", zap.Stringer("cache_item", cacheItem))
+	}
+	return c, nil
 }
 
 func (c *Cache) toFilePath(key string, t time.Time) string {
@@ -57,10 +80,13 @@ func toFilePath(basePath, key string, t time.Time) string {
 }
 
 func (c *Cache) Write(key string, itemDate time.Time, data []byte) (*CacheItem, error) {
-	return c.write(key, itemDate, time.Now(), data)
+	filePath := c.toFilePath(key, itemDate)
+	item := newCacheItem(key, filePath, len(data), itemDate, time.Now())
+
+	return c.write(item, data, false)
 }
 
-func (c *Cache) write(key string, itemDate, insertionTime time.Time, data []byte) (*CacheItem, error) {
+func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (*CacheItem, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -88,18 +114,16 @@ func (c *Cache) write(key string, itemDate, insertionTime time.Time, data []byte
 		}
 	}
 
-	filePath := c.toFilePath(key, itemDate)
-	item := newCacheItem(key, filePath, len(data), itemDate, insertionTime)
-
-	err := c.cacheIO.Write(filePath, data)
-	if err != nil {
-		return nil, fmt.Errorf("writing file: %s: %w", filePath, err)
+	if !skipWriteToFile {
+		err := c.cacheIO.Write(cacheItem.filePath, data)
+		if err != nil {
+			return nil, fmt.Errorf("writing file: %s: %w", cacheItem.filePath, err)
+		}
 	}
+	c.index[cacheItem.key] = cacheItem
+	heap.Push(c.recentEntryHeap, cacheItem)
 
-	c.index[key] = item
-	heap.Push(c.recentEntryHeap, item)
-
-	return item, err
+	return cacheItem, nil
 }
 
 func (c *Cache) purgeWithLock(h *Heap, neededSpace int) (evictedCacheItems []*CacheItem) { //this func should always be call within a cache lock
@@ -124,7 +148,6 @@ func (c *Cache) evictWithLock(h *Heap) *CacheItem {
 	}
 
 	return removed.(*CacheItem)
-
 }
 
 var NotFoundError = errors.New("not found")
@@ -158,10 +181,13 @@ func newCacheItem(key string, filePath string, size int, itemDate, insertedAt ti
 	}
 }
 
-func cacheItemFromFileName(filePath string, size int) (key string, item *CacheItem) {
-	name := filepath.Base(filePath)
+func (i *CacheItem) String() string {
+	return fmt.Sprintf("key: %s, size: %d: item date: %s, inserted at: %s, path: %s", i.key, i.size, i.itemDate, i.insertedAt, i.filePath)
+}
 
-	parts := strings.Split(name, "-")
+func cacheItemFromFile(filePath string, fileInfo os.FileInfo) (key string, item *CacheItem) {
+
+	parts := strings.Split(fileInfo.Name(), "-")
 	if len(parts) != 2 {
 		panic(fmt.Sprintf("invalid file name, expected 3 parts got %d", len(parts)))
 	}
@@ -171,8 +197,7 @@ func cacheItemFromFileName(filePath string, size int) (key string, item *CacheIt
 		panic(err)
 	}
 
-	//todo: check file time
-	item = newCacheItem(key, filePath, size, t, time.Now())
+	item = newCacheItem(key, filePath, int(fileInfo.Size()), t, fileInfo.ModTime())
 
 	return
 }

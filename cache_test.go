@@ -359,7 +359,7 @@ func TestCache_Write(t *testing.T) {
 //func TestCache_cacheItemFromFileName(t *testing.T) {
 //	filePath := fmt.Sprintf("/tmp/cache/key.1-%s", DateFormat)
 //	size := 1
-//	k, ci := cacheItemFromFileName(filePath, size)
+//	k, ci := cacheItemFromFile(filePath, size)
 //
 //	expectedTime, err := time.Parse(DateFormat, DateFormat)
 //	require.NoError(t, err)
