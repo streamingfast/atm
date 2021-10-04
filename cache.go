@@ -29,8 +29,8 @@ type Cache struct {
 
 func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cacheIO CacheIO) *Cache {
 	c := &Cache{
-		basePath: basePath,
-
+		basePath:        basePath,
+		index:           map[string]*CacheItem{},
 		recentEntryHeap: NewHeap(ByInsertionTime, maxRecentEntryBytes),
 		ageHeap:         NewHeap(ByAge, maxEntryByAgeBytes),
 		cacheIO:         cacheIO,
@@ -79,9 +79,9 @@ func toFilePath(basePath, key string, t time.Time) string {
 	return path.Join(basePath, name)
 }
 
-func (c *Cache) Write(key string, itemDate time.Time, data []byte) (*CacheItem, error) {
+func (c *Cache) Write(key string, itemDate time.Time, insertionDate time.Time, data []byte) (*CacheItem, error) {
 	filePath := c.toFilePath(key, itemDate)
-	item := newCacheItem(key, filePath, len(data), itemDate, time.Now())
+	item := newCacheItem(key, filePath, len(data), itemDate, insertionDate)
 
 	return c.write(item, data, false)
 }

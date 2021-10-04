@@ -244,7 +244,7 @@ func TestCache_Write(t *testing.T) {
 
 			var count = 0
 			for _, testItem := range c.items {
-				_, err := cache.write(testItem.key, testItem.itemDate, ttime(count), testItem.data)
+				_, err := cache.Write(testItem.key, testItem.itemDate, ttime(count), testItem.data)
 				require.NoError(t, err)
 				count++
 			}
