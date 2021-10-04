@@ -90,6 +90,11 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if item, ok := c.index[cacheItem.key]; ok {
+		item.insertedAt = cacheItem.insertedAt
+		return item, nil
+	}
+
 	evictedCacheItems := c.purgeWithLock(c.recentEntryHeap, len(data))
 
 	for _, evicted := range evictedCacheItems {
