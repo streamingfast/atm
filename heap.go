@@ -75,7 +75,7 @@ func (h *Heap) Peek() *CacheItem {
 	if len(h.items) == 0 {
 		return nil
 	}
-	return h.items[len(h.items)-1]
+	return h.items[0]
 }
 
 func (h *Heap) Remove(key string) *CacheItem {
