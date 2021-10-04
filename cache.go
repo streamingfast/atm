@@ -45,11 +45,11 @@ func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cach
 			select {
 			case <-time.After(10 * time.Second):
 				zlog.Info("cache stats",
-					zap.String("indexes entries", humanize.Bytes(uint64(len(c.index)))),
-					zap.String("recent entries", humanize.Bytes(uint64(c.recentEntryHeap.Len()))),
-					zap.String("age entries", humanize.Bytes(uint64(c.ageHeap.Len()))),
-					zap.String("recent heap size", humanize.Bytes(uint64(c.recentEntryHeap.sizeInBytes))),
-					zap.String("age heap size", humanize.Bytes(uint64(c.recentEntryHeap.sizeInBytes))),
+					zap.Int("count_indexes", len(c.index)),
+					zap.Int("count_recent entries", c.recentEntryHeap.Len()),
+					zap.Int("count_age entries", c.ageHeap.Len()),
+					zap.String("size_recent_heap", humanize.Bytes(uint64(c.recentEntryHeap.sizeInBytes))),
+					zap.String("size_age_heap", humanize.Bytes(uint64(c.ageHeap.sizeInBytes))),
 				)
 			}
 		}
