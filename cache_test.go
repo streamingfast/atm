@@ -266,14 +266,6 @@ func TestCache_Write(t *testing.T) {
 				return ByInsertionTime(indexItems, i, j)
 			})
 
-			for {
-				if ci := cache.ageHeap.Pop().(*CacheItem); ci != nil {
-					fmt.Println("pop:", ci.key)
-					continue
-				}
-				break
-			}
-
 			require.Equal(t, c.expectedIndex, indexItems)
 
 			if c.expectedRecentEntryHeap != nil {
