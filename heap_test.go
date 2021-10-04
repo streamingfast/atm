@@ -14,24 +14,26 @@ func TestHeapPopOrder(t *testing.T) {
 	}
 	heap.Init(h)
 
+	aTime, _ = time.Parse(DateFormat, DateFormat)
+
 	oldest := &CacheItem{
 		key:      "oldest",
-		itemDate: time.Now().Add(-1 * 60 * time.Second),
+		itemDate: aTime.Add(-1 * 60 * time.Second),
 		filePath: "/foo/1",
 	}
 	newest := &CacheItem{
 		key:      "newest",
-		itemDate: time.Now().Add(60 * time.Second),
+		itemDate: aTime.Add(60 * time.Second),
 		filePath: "/foo/3",
 	}
 	almostNewest := &CacheItem{
 		key:      "almost_newest",
-		itemDate: time.Now().Add(59 * time.Second),
+		itemDate: aTime.Add(59 * time.Second),
 		filePath: "/foo/3",
 	}
 	middle := &CacheItem{
 		key:      "middle",
-		itemDate: time.Now(),
+		itemDate: aTime,
 		filePath: "/foo/2",
 	}
 

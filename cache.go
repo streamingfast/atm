@@ -115,7 +115,7 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 
 	for _, evicted := range evictedCacheItems {
 		if c.ageHeap.FreeSpace() >= evicted.size { //we need space
-			c.ageHeap.Push(evicted)
+			heap.Push(c.ageHeap, evicted)
 			continue
 		}
 
@@ -123,6 +123,7 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 		if peek.itemDate.Before(evicted.itemDate) { //evicted item is older then last age item so we remove it
 			ageEvictedItems := c.purgeWithLock(c.ageHeap, len(data))
 			for _, ageEvicted := range ageEvictedItems {
+
 				delete(c.index, ageEvicted.key)
 				go func() {
 					err := c.cacheIO.Delete(evicted.filePath)
@@ -131,7 +132,7 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 					}
 				}()
 			}
-			c.ageHeap.Push(evicted)
+			heap.Push(c.ageHeap, evicted)
 		} else {
 			go func() {
 				err := c.cacheIO.Delete(evicted.filePath)

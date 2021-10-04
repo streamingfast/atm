@@ -1,6 +1,7 @@
 package atm
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -185,8 +186,8 @@ func TestCache_Write(t *testing.T) {
 			},
 			expectedAgedRecentHeap: &Heap{
 				items: []*CacheItem{
-					newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(4)), 3, ttime(4), ttime(0)),
 					newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(3)), 3, ttime(3), ttime(1)),
+					newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(4)), 3, ttime(4), ttime(0)),
 				},
 				sizeInBytes:    6,
 				maxSizeInBytes: 6,
@@ -221,8 +222,8 @@ func TestCache_Write(t *testing.T) {
 			},
 			expectedAgedRecentHeap: &Heap{
 				items: []*CacheItem{
-					newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(5)), 3, ttime(5), ttime(0)),
 					newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(4)), 3, ttime(4), ttime(1)),
+					newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(5)), 3, ttime(5), ttime(0)),
 				},
 				sizeInBytes:    6,
 				maxSizeInBytes: 6,
@@ -240,6 +241,11 @@ func TestCache_Write(t *testing.T) {
 				writeCount++
 				return nil
 			}
+			cacheIO.deleteFunc = func(path string) error {
+				fmt.Println("deleting file:", path)
+				return nil
+			}
+
 			cache := NewCache("/tmp", c.maxRecentEntryBytes, c.maxEntryByAgeBytes, cacheIO)
 
 			var count = 0
@@ -259,6 +265,14 @@ func TestCache_Write(t *testing.T) {
 			sort.Slice(indexItems, func(i, j int) bool {
 				return ByInsertionTime(indexItems, i, j)
 			})
+
+			for {
+				if ci := cache.ageHeap.Pop().(*CacheItem); ci != nil {
+					fmt.Println("pop:", ci.key)
+					continue
+				}
+				break
+			}
 
 			require.Equal(t, c.expectedIndex, indexItems)
 
