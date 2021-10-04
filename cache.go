@@ -43,7 +43,7 @@ func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cach
 }
 
 func NewInitializedCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cacheIO CacheIO) (*Cache, error) {
-	c := NewCache(basePath, maxEntryByAgeBytes, maxEntryByAgeBytes, cacheIO)
+	c := NewCache(basePath, maxRecentEntryBytes, maxEntryByAgeBytes, cacheIO)
 
 	return c.initialize()
 }
