@@ -41,9 +41,9 @@ func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cach
 	heap.Init(c.recentEntryHeap)
 
 	go func() {
-		start := time.Now()
 		for {
-			if time.Since(start) > 10*time.Second {
+			select {
+			case <-time.After(10 * time.Second):
 				zlog.Info("cache stats",
 					zap.String("indexes entries", humanize.Bytes(uint64(len(c.index)))),
 					zap.String("recent entries", humanize.Bytes(uint64(c.recentEntryHeap.Len()))),
@@ -51,7 +51,6 @@ func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cach
 					zap.String("recent heap size", humanize.Bytes(uint64(c.recentEntryHeap.sizeInBytes))),
 					zap.String("age heap size", humanize.Bytes(uint64(c.recentEntryHeap.sizeInBytes))),
 				)
-				start = time.Now()
 			}
 		}
 	}()
