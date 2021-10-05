@@ -2,7 +2,6 @@ package atm
 
 import (
 	"container/heap"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -21,7 +20,6 @@ type Cache struct {
 	basePath string
 
 	index           map[string]*CacheItem
-	deleted         map[string]time.Time
 	recentEntryHeap *Heap
 	ageHeap         *Heap
 
@@ -33,7 +31,6 @@ func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cach
 	c := &Cache{
 		basePath:        basePath,
 		index:           map[string]*CacheItem{},
-		deleted: map[string]time.Time{},
 		recentEntryHeap: NewHeap(ByInsertionTime, maxRecentEntryBytes),
 		ageHeap:         NewHeap(ByAge, maxEntryByAgeBytes),
 		cacheIO:         cacheIO,
@@ -108,7 +105,7 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	zlog.Info("writing cache item", zap.Stringer("item", cacheItem))
+	zlog.Debug("writing cache item", zap.Stringer("item", cacheItem))
 
 	if item, ok := c.index[cacheItem.key]; ok {
 		item.insertedAt = cacheItem.insertedAt
@@ -117,7 +114,7 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 
 	evictedCacheItems := c.purgeWithLock(c.recentEntryHeap, len(data))
 	if len(evictedCacheItems) > 0 {
-		zlog.Info("evicted from recent entry heap", zap.Reflect("items", evictedCacheItems))
+		zlog.Debug("evicted from recent entry heap", zap.Reflect("items", evictedCacheItems))
 	}
 
 	for _, evicted := range evictedCacheItems {
@@ -131,7 +128,6 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 			evictedAgeItems := c.purgeWithLock(c.ageHeap, len(data))
 			for _, ageEvicted := range evictedAgeItems {
 				delete(c.index, ageEvicted.key)
-				c.deleted[ageEvicted.key] = time.Now()
 				go func(toDelete *CacheItem) {
 					err := c.cacheIO.Delete(toDelete.filePath)
 					if err != nil {
@@ -142,7 +138,6 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 			heap.Push(c.ageHeap, evicted)
 		} else {
 			delete(c.index, evicted.key)
-			c.deleted[evicted.key] = time.Now()
 			go func(toDelete *CacheItem) {
 				err := c.cacheIO.Delete(toDelete.filePath)
 				if err != nil {
@@ -155,11 +150,7 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 	if !skipWriteToFile {
 		err := c.cacheIO.Write(cacheItem.filePath, data)
 		if err != nil {
-			if t, found := c.deleted[cacheItem.key]; found{
-				zlog.Warn("WTF: writing a delete block", zap.String("file", cacheItem.filePath), zap.Time("deletion_time", t))
-			}
-			panic(fmt.Sprintf("writing file: %s: %s", cacheItem.filePath, err))
-			//return nil, fmt.Errorf
+			return nil, fmt.Errorf("writing file: %w", err)
 		}
 		zlog.Debug("wrote file", zap.String("path", cacheItem.filePath))
 	}
@@ -198,8 +189,6 @@ func (c *Cache) evictWithLock(h *Heap) *CacheItem {
 	return removed.(*CacheItem)
 }
 
-var NotFoundError = errors.New("not found")
-
 func (c *Cache) Read(key string) (data []byte, found bool, err error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -209,14 +198,11 @@ func (c *Cache) Read(key string) (data []byte, found bool, err error) {
 		return
 	}
 
-	zlog.Info("reading cache item", zap.Stringer("item", cacheItem))
+	zlog.Debug("reading cache item", zap.Stringer("item", cacheItem))
 
 	data, err = c.cacheIO.Read(cacheItem.filePath)
 	if err != nil {
-		if t, found := c.deleted[key]; found{
-			zlog.Warn("WTF: reading a deleted block", zap.String("file", cacheItem.filePath), zap.Time("deletion_time", t))
-		}
-		panic(fmt.Sprintf("reading file inserted at: %s: %s", cacheItem.insertedAt, err))
+		return
 	}
 
 	return
