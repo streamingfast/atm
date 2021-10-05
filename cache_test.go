@@ -1,6 +1,7 @@
 package atm
 
 import (
+	"container/heap"
 	"fmt"
 	"sort"
 	"testing"
@@ -76,9 +77,9 @@ func TestCache_Write(t *testing.T) {
 		items                   []*testItem
 		maxRecentEntryBytes     int
 		maxEntryByAgeBytes      int
-		expectedIndex           []*CacheItem
-		expectedRecentEntryHeap *Heap
-		expectedAgedRecentHeap  *Heap
+		expectedIndex           []string
+		expectedRecentEntryHeap []string
+		expectedAgedRecentHeap  []string
 		expectedWriteCount      int
 	}{
 		{
@@ -89,14 +90,11 @@ func TestCache_Write(t *testing.T) {
 				newTestItem("key.0", 0, 3),
 			},
 
-			expectedIndex: []*CacheItem{
-				newCacheItem("key.0", "/tmp/key.0-20060102T1504059999", 3, ttime(0), ttime(0)),
+			expectedIndex: []string{
+				"key.0",
 			},
-			expectedRecentEntryHeap: &Heap{
-				items:          []*CacheItem{newCacheItem("key.0", "/tmp/key.0-20060102T1504059999", 3, ttime(0), ttime(0))},
-				sizeInBytes:    3,
-				maxSizeInBytes: 3,
-				less:           ByInsertionTime,
+			expectedRecentEntryHeap: []string{
+				"key.0",
 			},
 			expectedAgedRecentHeap: nil,
 			expectedWriteCount:     1,
@@ -109,18 +107,13 @@ func TestCache_Write(t *testing.T) {
 			},
 			maxEntryByAgeBytes:  100,
 			maxRecentEntryBytes: 6,
-			expectedIndex: []*CacheItem{
-				newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(1)), 3, ttime(1), ttime(0)),
-				newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(0)), 3, ttime(0), ttime(1)),
+			expectedIndex: []string{
+				"key.0",
+				"key.1",
 			},
-			expectedRecentEntryHeap: &Heap{
-				items: []*CacheItem{
-					newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(1)), 3, ttime(1), ttime(0)),
-					newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(0)), 3, ttime(0), ttime(1)),
-				},
-				sizeInBytes:    6,
-				maxSizeInBytes: 6,
-				less:           ByInsertionTime,
+			expectedRecentEntryHeap: []string{
+				"key.0",
+				"key.1",
 			},
 			expectedAgedRecentHeap: nil,
 			expectedWriteCount:     2,
@@ -134,27 +127,17 @@ func TestCache_Write(t *testing.T) {
 			},
 			maxRecentEntryBytes: 6,
 			maxEntryByAgeBytes:  6,
-			expectedIndex: []*CacheItem{
-				newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(2)), 3, ttime(2), ttime(0)),
-				newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(1)), 3, ttime(1), ttime(1)),
-				newCacheItem("key.2", toFilePath("/tmp", "key.2", ttime(0)), 3, ttime(0), ttime(2)),
+			expectedIndex: []string{
+				"key.0",
+				"key.1",
+				"key.2",
 			},
-			expectedRecentEntryHeap: &Heap{
-				items: []*CacheItem{
-					newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(1)), 3, ttime(1), ttime(1)),
-					newCacheItem("key.2", toFilePath("/tmp", "key.2", ttime(0)), 3, ttime(0), ttime(2)),
-				},
-				sizeInBytes:    6,
-				maxSizeInBytes: 6,
-				less:           ByInsertionTime,
+			expectedRecentEntryHeap: []string{
+				"key.1",
+				"key.2",
 			},
-			expectedAgedRecentHeap: &Heap{
-				items: []*CacheItem{
-					newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(2)), 3, ttime(2), ttime(0)),
-				},
-				sizeInBytes:    3,
-				maxSizeInBytes: 6,
-				less:           ByAge,
+			expectedAgedRecentHeap: []string{
+				"key.0",
 			},
 			expectedWriteCount: 3,
 		},
@@ -169,29 +152,19 @@ func TestCache_Write(t *testing.T) {
 			},
 			maxRecentEntryBytes: 6,
 			maxEntryByAgeBytes:  6,
-			expectedIndex: []*CacheItem{
-				newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(4)), 3, ttime(4), ttime(0)),
-				newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(3)), 3, ttime(3), ttime(1)),
-				newCacheItem("key.3", toFilePath("/tmp", "key.3", ttime(1)), 3, ttime(1), ttime(3)),
-				newCacheItem("key.4", toFilePath("/tmp", "key.4", ttime(0)), 3, ttime(0), ttime(4)),
+			expectedIndex: []string{
+				"key.0",
+				"key.1",
+				"key.3",
+				"key.4",
 			},
-			expectedRecentEntryHeap: &Heap{
-				items: []*CacheItem{
-					newCacheItem("key.3", toFilePath("/tmp", "key.3", ttime(1)), 3, ttime(1), ttime(3)),
-					newCacheItem("key.4", toFilePath("/tmp", "key.4", ttime(0)), 3, ttime(0), ttime(4)),
-				},
-				sizeInBytes:    6,
-				maxSizeInBytes: 6,
-				less:           ByInsertionTime,
+			expectedRecentEntryHeap: []string{
+				"key.3",
+				"key.4",
 			},
-			expectedAgedRecentHeap: &Heap{
-				items: []*CacheItem{
-					newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(3)), 3, ttime(3), ttime(1)),
-					newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(4)), 3, ttime(4), ttime(0)),
-				},
-				sizeInBytes:    6,
-				maxSizeInBytes: 6,
-				less:           ByAge,
+			expectedAgedRecentHeap: []string{
+				"key.1",
+				"key.0",
 			},
 			expectedWriteCount: 5,
 		},
@@ -207,27 +180,17 @@ func TestCache_Write(t *testing.T) {
 			},
 			maxRecentEntryBytes: 6,
 			maxEntryByAgeBytes:  6,
-			expectedIndex: []*CacheItem{
-				newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(5)), 3, ttime(5), ttime(0)),
-				newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(4)), 3, ttime(4), ttime(1)),
-				newCacheItem("key.5", toFilePath("/tmp", "key.5", ttime(0)), 4, ttime(0), ttime(5)),
+			expectedIndex: []string{
+				"key.0",
+				"key.1",
+				"key.5",
 			},
-			expectedRecentEntryHeap: &Heap{
-				items: []*CacheItem{
-					newCacheItem("key.5", toFilePath("/tmp", "key.5", ttime(0)), 4, ttime(0), ttime(5)),
-				},
-				sizeInBytes:    4,
-				maxSizeInBytes: 6,
-				less:           ByInsertionTime,
+			expectedRecentEntryHeap: []string{
+				"key.5",
 			},
-			expectedAgedRecentHeap: &Heap{
-				items: []*CacheItem{
-					newCacheItem("key.1", toFilePath("/tmp", "key.1", ttime(4)), 3, ttime(4), ttime(1)),
-					newCacheItem("key.0", toFilePath("/tmp", "key.0", ttime(5)), 3, ttime(5), ttime(0)),
-				},
-				sizeInBytes:    6,
-				maxSizeInBytes: 6,
-				less:           ByAge,
+			expectedAgedRecentHeap: []string{
+				"key.1",
+				"key.0",
 			},
 			expectedWriteCount: 6,
 		},
@@ -266,18 +229,24 @@ func TestCache_Write(t *testing.T) {
 				return ByInsertionTime(indexItems, i, j)
 			})
 
-			require.Equal(t, c.expectedIndex, indexItems)
+			for i, key := range c.expectedIndex {
+				require.Equal(t, key, indexItems[i].key)
+			}
 
 			if c.expectedRecentEntryHeap != nil {
-				require.Equal(t, c.expectedRecentEntryHeap.items, cache.recentEntryHeap.items)
-				require.Equal(t, c.expectedRecentEntryHeap.sizeInBytes, cache.recentEntryHeap.sizeInBytes)
+				for _, key := range c.expectedRecentEntryHeap {
+					popped := heap.Pop(cache.recentEntryHeap).(*CacheItem)
+					require.Equal(t, key, popped.key)
+				}
 			} else {
 				require.Equal(t, cache.recentEntryHeap.Len(), 0)
 			}
 
 			if c.expectedAgedRecentHeap != nil {
-				require.Equal(t, c.expectedAgedRecentHeap.items, cache.ageHeap.items)
-				require.Equal(t, c.expectedAgedRecentHeap.sizeInBytes, cache.ageHeap.sizeInBytes)
+				for _, key := range c.expectedAgedRecentHeap {
+					popped := heap.Pop(cache.ageHeap).(*CacheItem)
+					require.Equal(t, key, popped.key)
+				}
 			} else {
 				require.Equal(t, cache.ageHeap.Len(), 0)
 			}
