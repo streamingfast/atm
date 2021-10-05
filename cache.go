@@ -108,12 +108,18 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	zlog.Info("writing cache item", zap.Stringer("item", cacheItem))
+
 	if item, ok := c.index[cacheItem.key]; ok {
 		item.insertedAt = cacheItem.insertedAt
 		return item, nil
 	}
 
 	evictedCacheItems := c.purgeWithLock(c.recentEntryHeap, len(data))
+	if len(evictedCacheItems) > 0 {
+		zlog.Info("evicted from recent entry heap", zap.Reflect("items", evictedCacheItems))
+	}
+
 	for _, evicted := range evictedCacheItems {
 		if c.ageHeap.FreeSpace() >= evicted.size { //we need space
 			heap.Push(c.ageHeap, evicted)
@@ -122,27 +128,27 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 
 		peek := c.ageHeap.Peek()
 		if peek.itemDate.Before(evicted.itemDate) { //evicted item is older then last age item so we remove it
-			ageEvictedItems := c.purgeWithLock(c.ageHeap, len(data))
-			for _, ageEvicted := range ageEvictedItems {
+			evictedAgeItems := c.purgeWithLock(c.ageHeap, len(data))
+			for _, ageEvicted := range evictedAgeItems {
 				delete(c.index, ageEvicted.key)
 				c.deleted[ageEvicted.key] = time.Now()
-				go func() {
-					err := c.cacheIO.Delete(evicted.filePath)
+				go func(toDelete *CacheItem) {
+					err := c.cacheIO.Delete(toDelete.filePath)
 					if err != nil {
-						zlog.Warn("failed to delete file", zap.String("file", evicted.filePath), zap.Error(err))
+						zlog.Warn("failed to delete file", zap.String("file", toDelete.filePath), zap.Error(err))
 					}
-				}()
+				}(ageEvicted)
 			}
 			heap.Push(c.ageHeap, evicted)
 		} else {
 			delete(c.index, evicted.key)
 			c.deleted[evicted.key] = time.Now()
-			go func() {
-				err := c.cacheIO.Delete(evicted.filePath)
+			go func(toDelete *CacheItem) {
+				err := c.cacheIO.Delete(toDelete.filePath)
 				if err != nil {
-					zlog.Warn("too old to age heap : failed to delete file", zap.String("file", evicted.filePath), zap.Error(err))
+					zlog.Warn("too old to age heap : failed to delete file", zap.String("file", toDelete.filePath), zap.Error(err))
 				}
-			}()
+			}(evicted)
 		}
 	}
 
@@ -172,6 +178,10 @@ func (c *Cache) purgeWithLock(h *Heap, neededSpace int) (evictedCacheItems []*Ca
 
 	for freeSpace < neededSpace {
 		evicted := c.evictWithLock(h)
+		if evicted == nil {
+			return
+		}
+
 		evictedCacheItems = append(evictedCacheItems, evicted)
 		freeSpace = h.FreeSpace()
 	}
@@ -190,22 +200,26 @@ func (c *Cache) evictWithLock(h *Heap) *CacheItem {
 
 var NotFoundError = errors.New("not found")
 
-func (c *Cache) Read(key string) (data []byte, err error) {
+func (c *Cache) Read(key string) (data []byte, found bool, err error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if ci, found := c.index[key]; found {
-		data, err := c.cacheIO.Read(ci.filePath)
-		if err != nil {
-			if t, found := c.deleted[key]; found{
-				zlog.Warn("WTF: reading a deleted block", zap.String("file", ci.filePath), zap.Time("deletion_time", t))
-			}
-			panic(fmt.Sprintf("reading file inserted at: %s: %s", ci.insertedAt, err))
-		}
-		return data, nil
+	var cacheItem *CacheItem
+	if cacheItem, found = c.index[key]; !found {
+		return
 	}
 
-	return nil, NotFoundError
+	zlog.Info("reading cache item", zap.Stringer("item", cacheItem))
+
+	data, err = c.cacheIO.Read(cacheItem.filePath)
+	if err != nil {
+		if t, found := c.deleted[key]; found{
+			zlog.Warn("WTF: reading a deleted block", zap.String("file", cacheItem.filePath), zap.Time("deletion_time", t))
+		}
+		panic(fmt.Sprintf("reading file inserted at: %s: %s", cacheItem.insertedAt, err))
+	}
+
+	return
 }
 
 type CacheItem struct {
@@ -231,7 +245,6 @@ func (i *CacheItem) String() string {
 }
 
 func cacheItemFromFile(filePath string, fileInfo os.FileInfo) (key string, item *CacheItem) {
-
 	parts := strings.Split(fileInfo.Name(), "-")
 	if len(parts) != 2 {
 		panic(fmt.Sprintf("invalid file name, expected 3 parts got %d", len(parts)))
