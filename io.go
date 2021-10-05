@@ -1,6 +1,7 @@
 package atm
 
 import (
+	"io/ioutil"
 	"os"
 )
 
@@ -17,11 +18,11 @@ func NewFileIO() *FileIO {
 }
 
 func (f *FileIO) Write(path string, data []byte) error {
-	return os.WriteFile(path, data, os.ModePerm)
+	return ioutil.WriteFile(path, data, os.ModePerm)
 }
 
 func (f *FileIO) Read(path string) ([]byte, error) {
-	return os.ReadFile(path)
+	return ioutil.ReadFile(path)
 }
 
 func (f *FileIO) Delete(path string) error {
