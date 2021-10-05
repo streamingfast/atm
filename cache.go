@@ -21,6 +21,7 @@ type Cache struct {
 	basePath string
 
 	index           map[string]*CacheItem
+	deleted         map[string]time.Time
 	recentEntryHeap *Heap
 	ageHeap         *Heap
 
@@ -32,6 +33,7 @@ func NewCache(basePath string, maxRecentEntryBytes, maxEntryByAgeBytes int, cach
 	c := &Cache{
 		basePath:        basePath,
 		index:           map[string]*CacheItem{},
+		deleted: map[string]time.Time{},
 		recentEntryHeap: NewHeap(ByInsertionTime, maxRecentEntryBytes),
 		ageHeap:         NewHeap(ByAge, maxEntryByAgeBytes),
 		cacheIO:         cacheIO,
@@ -123,6 +125,7 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 			ageEvictedItems := c.purgeWithLock(c.ageHeap, len(data))
 			for _, ageEvicted := range ageEvictedItems {
 				delete(c.index, ageEvicted.key)
+				c.deleted[ageEvicted.key] = time.Now()
 				go func() {
 					err := c.cacheIO.Delete(evicted.filePath)
 					if err != nil {
@@ -133,6 +136,7 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 			heap.Push(c.ageHeap, evicted)
 		} else {
 			delete(c.index, evicted.key)
+			c.deleted[evicted.key] = time.Now()
 			go func() {
 				err := c.cacheIO.Delete(evicted.filePath)
 				if err != nil {
@@ -145,7 +149,11 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 	if !skipWriteToFile {
 		err := c.cacheIO.Write(cacheItem.filePath, data)
 		if err != nil {
-			return nil, fmt.Errorf("writing file: %s: %w", cacheItem.filePath, err)
+			if t, found := c.deleted[cacheItem.key]; found{
+				zlog.Warn("WTF: writing a delete block", zap.String("file", cacheItem.filePath), zap.Time("deletion_time", t))
+			}
+			panic(fmt.Sprintf("writing file: %s: %s", cacheItem.filePath, err))
+			//return nil, fmt.Errorf
 		}
 		zlog.Debug("wrote file", zap.String("path", cacheItem.filePath))
 	}
@@ -189,7 +197,10 @@ func (c *Cache) Read(key string) (data []byte, err error) {
 	if ci, found := c.index[key]; found {
 		data, err := c.cacheIO.Read(ci.filePath)
 		if err != nil {
-			return nil, fmt.Errorf("reading file inserted at: %s: %w", ci.insertedAt, err)
+			if t, found := c.deleted[key]; found{
+				zlog.Warn("WTF: reading a deleted block", zap.String("file", ci.filePath), zap.Time("deletion_time", t))
+			}
+			panic(fmt.Sprintf("reading file inserted at: %s: %s", ci.insertedAt, err))
 		}
 		return data, nil
 	}
