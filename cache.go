@@ -112,7 +112,6 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 	}
 
 	evictedCacheItems := c.purgeWithLock(c.recentEntryHeap, len(data))
-
 	for _, evicted := range evictedCacheItems {
 		if c.ageHeap.FreeSpace() >= evicted.size { //we need space
 			heap.Push(c.ageHeap, evicted)
@@ -123,7 +122,6 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 		if peek.itemDate.Before(evicted.itemDate) { //evicted item is older then last age item so we remove it
 			ageEvictedItems := c.purgeWithLock(c.ageHeap, len(data))
 			for _, ageEvicted := range ageEvictedItems {
-
 				delete(c.index, ageEvicted.key)
 				go func() {
 					err := c.cacheIO.Delete(evicted.filePath)
@@ -134,13 +132,13 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 			}
 			heap.Push(c.ageHeap, evicted)
 		} else {
+			delete(c.index, evicted.key)
 			go func() {
 				err := c.cacheIO.Delete(evicted.filePath)
 				if err != nil {
-					zlog.Warn("to old to age heap : failed to delete file", zap.String("file", evicted.filePath), zap.Error(err))
+					zlog.Warn("too old to age heap : failed to delete file", zap.String("file", evicted.filePath), zap.Error(err))
 				}
 			}()
-			delete(c.index, evicted.key)
 		}
 	}
 
@@ -149,7 +147,9 @@ func (c *Cache) write(cacheItem *CacheItem, data []byte, skipWriteToFile bool) (
 		if err != nil {
 			return nil, fmt.Errorf("writing file: %s: %w", cacheItem.filePath, err)
 		}
+		zlog.Debug("wrote file", zap.String("path", cacheItem.filePath))
 	}
+
 	c.index[cacheItem.key] = cacheItem
 	heap.Push(c.recentEntryHeap, cacheItem)
 
@@ -183,8 +183,8 @@ func (c *Cache) evictWithLock(h *Heap) *CacheItem {
 var NotFoundError = errors.New("not found")
 
 func (c *Cache) Read(key string) (data []byte, err error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if ci, found := c.index[key]; found {
 		data, err := c.cacheIO.Read(ci.filePath)
