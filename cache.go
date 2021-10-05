@@ -187,7 +187,11 @@ func (c *Cache) Read(key string) (data []byte, err error) {
 	defer c.mu.RUnlock()
 
 	if ci, found := c.index[key]; found {
-		return c.cacheIO.Read(ci.filePath)
+		data, err := c.cacheIO.Read(ci.filePath)
+		if err != nil {
+			return nil, fmt.Errorf("reading file inserted at: %s: %w", ci.insertedAt, err)
+		}
+		return data, nil
 	}
 
 	return nil, NotFoundError
