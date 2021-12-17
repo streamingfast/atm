@@ -74,7 +74,6 @@ func (c *Cache) initialize() (*Cache, error) {
 
 	zlog.Info("load files to caches", zap.Int("file_count", len(files)))
 	for _, f := range files {
-		fmt.Println(f.Name())
 		_, cacheItem := cacheItemFromFile(path.Join(c.basePath, f.Name()), f)
 		_, err := c.write(cacheItem, []byte{}, true)
 		if err != nil {

@@ -2,7 +2,6 @@ package atm
 
 import (
 	"container/heap"
-	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -205,7 +204,6 @@ func TestCache_Write(t *testing.T) {
 				return nil
 			}
 			cacheIO.deleteFunc = func(path string) error {
-				fmt.Println("deleting file:", path)
 				return nil
 			}
 
