@@ -74,8 +74,15 @@ func (c *Cache) initialize() (*Cache, error) {
 
 	zlog.Info("load files to caches", zap.Int("file_count", len(files)))
 	for _, f := range files {
-		_, cacheItem := cacheItemFromFile(path.Join(c.basePath, f.Name()), f)
-		_, err := c.write(cacheItem, []byte{}, true)
+		if f.IsDir() {
+			continue
+		}
+		_, cacheItem, err := cacheItemFromFile(path.Join(c.basePath, f.Name()), f)
+		if err != nil {
+			zlog.Debug("skipping invalid cache file", zap.Error(err))
+			continue
+		}
+		_, err = c.write(cacheItem, []byte{}, true)
 		if err != nil {
 			return c, fmt.Errorf("writing cache item: %w", err)
 		}
@@ -229,15 +236,15 @@ func (i *CacheItem) String() string {
 	return fmt.Sprintf("key: %s, size: %d: item date: %s, inserted at: %s, path: %s", i.key, i.size, i.itemDate, i.insertedAt, i.filePath)
 }
 
-func cacheItemFromFile(filePath string, fileInfo os.FileInfo) (key string, item *CacheItem) {
+func cacheItemFromFile(filePath string, fileInfo os.FileInfo) (key string, item *CacheItem, err error) {
 	parts := strings.Split(fileInfo.Name(), "-")
 	if len(parts) != 2 {
-		panic(fmt.Sprintf("invalid file name, expected 3 parts got %d", len(parts)))
+		return "", nil, fmt.Errorf("invalid file name, expected 3 parts got %d", len(parts))
 	}
 	key = parts[0]
 	t, err := time.Parse(DateFormat, parts[1])
 	if err != nil {
-		panic(err)
+		return "", nil, err
 	}
 
 	item = newCacheItem(key, filePath, int(fileInfo.Size()), t, fileInfo.ModTime())
