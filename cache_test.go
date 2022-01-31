@@ -80,6 +80,7 @@ func TestCache_Write(t *testing.T) {
 		expectedRecentEntryHeap []string
 		expectedAgedRecentHeap  []string
 		expectedWriteCount      int
+		systemBlockSize         int
 	}{
 		{
 			name:                "one",
@@ -97,6 +98,7 @@ func TestCache_Write(t *testing.T) {
 			},
 			expectedAgedRecentHeap: nil,
 			expectedWriteCount:     1,
+			systemBlockSize:        0,
 		},
 		{
 			name: "two",
@@ -116,6 +118,7 @@ func TestCache_Write(t *testing.T) {
 			},
 			expectedAgedRecentHeap: nil,
 			expectedWriteCount:     2,
+			systemBlockSize:        0,
 		},
 		{
 			name: "two one age",
@@ -139,6 +142,7 @@ func TestCache_Write(t *testing.T) {
 				"key.0",
 			},
 			expectedWriteCount: 3,
+			systemBlockSize:    0,
 		},
 		{
 			name: "2 recent, 2 age, 2 bye bye",
@@ -166,32 +170,67 @@ func TestCache_Write(t *testing.T) {
 				"key.0",
 			},
 			expectedWriteCount: 5,
+			systemBlockSize:    0,
 		},
 		{
 			name: "With 1 fat",
 			items: []*testItem{
-				newTestItem("key.0", 5, 3),
-				newTestItem("key.1", 4, 3),
-				newTestItem("key.2", 3, 3),
-				newTestItem("key.3", 2, 3),
-				newTestItem("key.4", 1, 3),
-				newTestItem("key.5", 0, 4),
+				newTestItem("key.0", 0, 3), // old block
+				newTestItem("key.1", 1, 3),
+				newTestItem("key.2", 2, 3),
+				newTestItem("key.3", 3, 3),
+				newTestItem("key.4", 4, 3),
+				newTestItem("key.5", 5, 4), // recent block
 			},
 			maxRecentEntryBytes: 6,
 			maxEntryByAgeBytes:  6,
 			expectedIndex: []string{
-				"key.0",
-				"key.1",
+				"key.3",
+				"key.4",
 				"key.5",
 			},
 			expectedRecentEntryHeap: []string{
 				"key.5",
 			},
 			expectedAgedRecentHeap: []string{
-				"key.1",
-				"key.0",
+				"key.3",
+				"key.4",
 			},
 			expectedWriteCount: 6,
+			systemBlockSize:    0,
+		},
+		{
+			name: "testing system block size",
+			items: []*testItem{
+				newTestItem("key.0", 0, 1), // old block
+				newTestItem("key.1", 1, 1),
+				newTestItem("key.2", 2, 1),
+				newTestItem("key.3", 3, 1),
+				newTestItem("key.4", 4, 1),
+				newTestItem("key.5", 5, 1), // recent block
+			},
+			maxRecentEntryBytes: 3 + (3 * 5), // 3 blocks with their extra file size padding
+			maxEntryByAgeBytes:  2 + (2 * 5), // 2 blocks " " " " "
+			expectedIndex: []string{
+				//"key.0",
+				"key.1",
+				"key.2",
+				"key.3",
+				"key.4",
+				"key.5",
+			},
+			expectedRecentEntryHeap: []string{
+				"key.3",
+				"key.4",
+				"key.5",
+			},
+			expectedAgedRecentHeap: []string{
+				//"key.0",
+				"key.1",
+				"key.2",
+			},
+			expectedWriteCount: 6,
+			systemBlockSize:    5,
 		},
 	}
 
@@ -207,6 +246,7 @@ func TestCache_Write(t *testing.T) {
 				return nil
 			}
 
+			SystemBlockSize = c.systemBlockSize
 			cache := NewCache("/tmp", c.maxRecentEntryBytes, c.maxEntryByAgeBytes, cacheIO)
 
 			var count = 0

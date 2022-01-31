@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
+var SystemBlockSize = 4 * 1024 // 4K blocks by default, to estimate cache overhead
 const DateFormat = "20060102T1504059999"
 
 type Cache struct {
@@ -100,9 +101,13 @@ func toFilePath(basePath, key string, t time.Time) string {
 	return path.Join(basePath, name)
 }
 
+func sizeOnDisk(dataLen int) int {
+	return dataLen + SystemBlockSize
+}
+
 func (c *Cache) Write(key string, itemDate time.Time, insertionDate time.Time, data []byte) (*CacheItem, error) {
 	filePath := c.toFilePath(key, itemDate)
-	item := newCacheItem(key, filePath, len(data), itemDate, insertionDate)
+	item := newCacheItem(key, filePath, sizeOnDisk(len(data)), itemDate, insertionDate)
 
 	return c.write(item, data, false)
 }
